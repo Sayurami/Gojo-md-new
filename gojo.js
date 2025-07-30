@@ -1,103 +1,69 @@
 const fs = require('fs');
-const https = require('https');
 const path = require('path');
-const unzipper = require('unzipper');
-const { spawn } = require('child_process');
+const axios = require('axios');
+const AdmZip = require('adm-zip');
 
-const rootDir = process.cwd();
+// ZIP එක බාගෙන, Extract කරලා Plugins load කරන function එක
+async function downloadAndExtractZip(zipUrl) {
+  const zipPath = path.join(__dirname, 'temp.zip');
+  const extractPath = __dirname;
 
-const downloads = [
-  { url: 'https://files.catbox.moe/gr4zgl.zip', folder: rootDir }, // index.js
-  { url: 'https://files.catbox.moe/yph3pe.zip', folder: path.join(rootDir, 'lib') },
-  { url: 'https://files.catbox.moe/7t24lm.zip', folder: path.join(rootDir, 'plugins') }
-];
-
-function downloadAndExtract({ url, folder }) {
-  return new Promise((resolve, reject) => {
-    const tempZip = path.join(rootDir, 'temp.zip');
-    console.log(`⬇️ Downloading from ${url}...`);
-
-    const file = fs.createWriteStream(tempZip);
-
-    const request = https.get(url, { agent: new https.Agent({ keepAlive: true }) }, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download. Status Code: ${response.statusCode}`));
-        return;
-      }
-
-      response.pipe(file);
-      file.on('finish', async () => {
-        file.close();
-
-        if (fs.existsSync(folder)) {
-          fs.rmSync(folder, { recursive: true, force: true });
-          console.log(`🗑️ Deleted existing folder: ${folder}`);
-        }
-
-        fs.mkdirSync(folder, { recursive: true });
-
-        fs.createReadStream(tempZip)
-          .pipe(unzipper.Extract({ path: folder }))
-          .on('close', () => {
-            console.log(`✅ Extracted to ${folder}`);
-            fs.unlinkSync(tempZip);
-            console.log('🗑️ Deleted temp.zip');
-            resolve();
-          })
-          .on('error', reject);
-      });
-    });
-
-    request.on('error', (err) => {
-      reject(new Error('Download error: ' + err.message));
-    });
-
-    request.setTimeout(15000, () => {
-      request.abort();
-      reject(new Error('Download timeout'));
-    });
-  });
-}
-
-async function downloadAndExtractWithRetry(item, retries = 3, delay = 3000) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      await downloadAndExtract(item);
-      return;
-    } catch (err) {
-      console.log(`⚠️ Attempt ${attempt} failed: ${err.message}`);
-      if (attempt < retries) {
-        console.log(`🔁 Retrying in ${delay / 1000}s...`);
-        await new Promise(res => setTimeout(res, delay));
-      } else {
-        throw new Error(`❌ Failed after ${retries} attempts: ${err.message}`);
-      }
-    }
-  }
-}
-
-async function start() {
   try {
-    for (const item of downloads) {
-      await downloadAndExtractWithRetry(item);
-    }
-
-    const indexPath = path.join(rootDir, 'index.js');
-    if (!fs.existsSync(indexPath)) {
-      console.error(`❌ index.js not found at: ${indexPath}`);
-      process.exit(1);
-    }
-
-    console.log('🚀 Starting bot...');
-    const bot = spawn('node', ['index.js'], { stdio: 'inherit' });
-
-    bot.on('exit', code => {
-      console.log(`❌ Bot exited with code: ${code}`);
+    const response = await axios({
+      method: 'GET',
+      url: zipUrl,
+      responseType: 'stream'
     });
+
+    const writer = fs.createWriteStream(zipPath);
+    response.data.pipe(writer);
+
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    console.log('✅ ZIP එක බාගත්තා.');
+
+    // Extract ZIP
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(extractPath, true);
+    console.log('✅ ZIP එක extract කරා.');
+
+    // Delete temp.zip
+    fs.unlinkSync(zipPath);
+    console.log('🗑️ ZIP file එක delete කරා.');
+
+    // Load plugins
+    const pluginDir = path.join(__dirname, 'plugins');
+    if (fs.existsSync(pluginDir)) {
+      const plugins = fs.readdirSync(pluginDir).filter(f => f.endsWith('.js'));
+
+      if (plugins.length === 0) {
+        console.warn('⚠️ plugins folder එකේ plugin කිසිවක් නෑ!');
+      }
+
+      for (const file of plugins) {
+        try {
+          require(path.join(pluginDir, file));
+          console.log(`✅ Plugin loaded: ${file}`);
+        } catch (e) {
+          console.error(`❌ Plugin load error (${file}):`, e);
+        }
+      }
+    } else {
+      console.warn('⚠️ plugins folder එක හමු නොවුණා!');
+    }
+
+    console.log('🚀 Bot system ready.');
 
   } catch (err) {
-    console.error('⚠️ Error occurred:', err.message);
+    console.error('❌ Error during setup:', err);
   }
 }
 
-start();
+// 🔗 ZIP URL
+const zipUrl = 'https://files.catbox.moe/jbz1vo.zip';
+
+// ▶️ Call the function
+downloadAndExtractZip(zipUrl);
