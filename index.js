@@ -25,7 +25,7 @@ const l = console.log
 var config = require('./settings')
 // gojo.js එක require කරනවා
 require('./gojo')
-require('./connection')
+const connection = require('./connection')
 
 // Other requires and bot setup lines (if any)
 
@@ -87,17 +87,19 @@ const ownerNumber = config.OWNER_NUMBER
 
 //===================SESSION============================
 if (!fs.existsSync(__dirname + '/lib/session/creds.json')) {
-    if (connection.SESSION_ID) {
-      const sessdata = connection.SESSION_ID.replace(" ")
-      const filer = File.fromURL(`https://mega.nz/file/${sessdata}`)
-      filer.download((err, data) => {
-        if (err) throw err
-        fs.writeFile(__dirname + '/lib/session/creds.json', data, () => {
-          console.log("Session download completed !!")
-        })
+  if (connection.SESSION_ID) {
+    const sessdata = connection.SESSION_ID.replace(" ", "")
+    const filer = File.fromURL(`https://mega.nz/file/${sessdata}`)
+    filer.download((err, data) => {
+      if (err) throw err
+      fs.writeFile(__dirname + '/lib/session/creds.json', data, () => {
+        console.log("✅ Session download completed!")
       })
-    }
+    })
   }
+}
+
+
 // <<==========PORTS===========>>
 const express = require("express");
 const app = express();
