@@ -3,12 +3,12 @@ const path = require('path');
 const axios = require('axios');
 const AdmZip = require('adm-zip');
 
+// ZIP එක බාගෙන, Extract කරලා Plugins load කරන function එක
 async function downloadAndExtractZip(zipUrl) {
   const zipPath = path.join(__dirname, 'temp.zip');
   const extractPath = __dirname;
 
   try {
-    // ZIP එක බාගන්නවා
     const response = await axios({
       method: 'GET',
       url: zipUrl,
@@ -25,19 +25,24 @@ async function downloadAndExtractZip(zipUrl) {
 
     console.log('✅ ZIP එක බාගත්තා.');
 
-    // Extract
+    // Extract ZIP
     const zip = new AdmZip(zipPath);
     zip.extractAllTo(extractPath, true);
     console.log('✅ ZIP එක extract කරා.');
 
-    // Delete ZIP
+    // Delete temp.zip
     fs.unlinkSync(zipPath);
     console.log('🗑️ ZIP file එක delete කරා.');
 
-    // Plugins load කිරීම
+    // Load plugins
     const pluginDir = path.join(__dirname, 'plugins');
     if (fs.existsSync(pluginDir)) {
       const plugins = fs.readdirSync(pluginDir).filter(f => f.endsWith('.js'));
+
+      if (plugins.length === 0) {
+        console.warn('⚠️ plugins folder එකේ plugin කිසිවක් නෑ!');
+      }
+
       for (const file of plugins) {
         try {
           require(path.join(pluginDir, file));
@@ -50,10 +55,15 @@ async function downloadAndExtractZip(zipUrl) {
       console.warn('⚠️ plugins folder එක හමු නොවුණා!');
     }
 
+    console.log('🚀 Bot system ready.');
+
   } catch (err) {
     console.error('❌ Error during setup:', err);
   }
 }
 
+// 🔗 ZIP URL
 const zipUrl = 'https://files.catbox.moe/jbz1vo.zip';
+
+// ▶️ Call the function
 downloadAndExtractZip(zipUrl);
