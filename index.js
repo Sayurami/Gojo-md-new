@@ -23,6 +23,9 @@ const FileType = require('file-type')
 const moment = require('moment-timezone')
 const l = console.log
 var config = require('./settings')
+// gojo.js එක require කරනවා
+require('./gojo')
+
 // Other requires and bot setup lines (if any)
 
 // Call start.js
