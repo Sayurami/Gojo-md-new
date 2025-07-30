@@ -4,86 +4,79 @@ const axios = require('axios');
 const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
 
-async function downloadAndExtractZip(zipUrl) {
-  const zipPath = path.join(__dirname, 'temp.zip');
-  const extractPath = __dirname;
-
+async function downloadAndExtract(url, destPath) {
+  const tmpPath = path.join(__dirname, 'temp.zip');
   try {
-    // ZIP එක download කරන්න
+    console.log(`⬇️ Downloading from ${url}...`);
     const response = await axios({
+      url,
       method: 'GET',
-      url: zipUrl,
-      responseType: 'stream'
+      responseType: 'arraybuffer'
     });
+    fs.writeFileSync(tmpPath, response.data);
+    console.log(`✅ Downloaded to ${tmpPath}`);
 
-    const writer = fs.createWriteStream(zipPath);
-    response.data.pipe(writer);
+    const zip = new AdmZip(tmpPath);
 
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-
-    console.log('✅ ZIP එක බාගත්තා.');
-
-    // ZIP extract කරන්න
-    const zip = new AdmZip(zipPath);
-    zip.extractAllTo(extractPath, true);
-    console.log('✅ ZIP එක extract කරා.');
-
-    // ZIP file එක delete කරන්න
-    fs.unlinkSync(zipPath);
-    console.log('🗑️ ZIP file එක delete කරා.');
-
-    // Extract වෙලා ඇති folder list එක බලන්න
-    const extractedFolders = fs.readdirSync(extractPath)
-      .filter(f => fs.statSync(path.join(extractPath, f)).isDirectory());
-    console.log('Extracted folders:', extractedFolders);
-
-    if (extractedFolders.length === 0) {
-      console.error('❌ Extracted folder එකක් හමු නොවීය.');
-      return;
+    // If folder exists, remove it (clean start)
+    if (fs.existsSync(destPath)) {
+      fs.rmSync(destPath, { recursive: true, force: true });
+      console.log(`🗑️ Deleted existing folder: ${destPath}`);
     }
 
-    // Main extracted folder එක assume කරමු පළවෙනි එක
-    const mainExtractedFolder = extractedFolders[0];
-    const mainFolderPath = path.join(extractPath, mainExtractedFolder);
+    zip.extractAllTo(destPath, true);
+    console.log(`✅ Extracted to ${destPath}`);
 
-    // plugins folder path
-    const pluginPath = path.join(mainFolderPath, 'plugins');
-    if (fs.existsSync(pluginPath)) {
-      const pluginFiles = fs.readdirSync(pluginPath).filter(f => f.endsWith('.js'));
-      for (const file of pluginFiles) {
-        try {
-          require(path.join(pluginPath, file));
-          console.log(`✅ Plugin එක load වුනා: ${file}`);
-        } catch (err) {
-          console.error(`❌ Plugin load error: ${file}`, err);
-        }
-      }
-    } else {
-      console.warn('⚠️ Plugins folder එක හමු නොවුණා:', pluginPath);
-    }
-
-    // index.js path බලමු
-    const indexPath = path.join(mainFolderPath, 'index.js');
-    if (!fs.existsSync(indexPath)) {
-      console.error('❌ index.js file එක හමු නොවීය:', indexPath);
-      return;
-    }
-
-    // Bot start කිරීම
-    console.log(`🚀 Bot එක ${indexPath} වෙතින් start වෙමින්...`);
-    const bot = spawn('node', [indexPath], { stdio: 'inherit', cwd: mainFolderPath });
-
-    bot.on('exit', (code) => {
-      console.log(`🔁 Bot එක නවත්වුනා code එක: ${code}`);
-    });
-
+    fs.unlinkSync(tmpPath);
+    console.log(`🗑️ Deleted temp.zip`);
   } catch (err) {
-    console.error('❌ Setup එකේ දෝෂයක්:', err);
+    console.error('❌ Download or extract failed:', err);
+    process.exit(1);
   }
 }
 
-const zipUrl = 'https://files.catbox.moe/59cwqr.zip'; // ඔයාට අවශ්‍ය URL එක දාන්න
-downloadAndExtractZip(zipUrl);
+async function main() {
+  const pluginsUrl = 'https://files.catbox.moe/rtz9xd.zip';
+  const botUrl = 'https://files.catbox.moe/5eskqc.zip';
+
+  const pluginsPath = path.join(__dirname, 'plugins');
+  const botPath = path.join(__dirname, 'bot');
+
+  // 1. Download & extract plugins
+  await downloadAndExtract(pluginsUrl, pluginsPath);
+
+  // 2. Load plugins
+  if (fs.existsSync(pluginsPath)) {
+    const pluginFiles = fs.readdirSync(pluginsPath).filter(f => f.endsWith('.js'));
+    for (const file of pluginFiles) {
+      try {
+        require(path.join(pluginsPath, file));
+        console.log(`✅ Plugin loaded: ${file}`);
+      } catch (err) {
+        console.error(`❌ Plugin load error: ${file}`, err);
+      }
+    }
+  } else {
+    console.warn('⚠️ Plugins folder missing!');
+  }
+
+  // 3. Download & extract main bot files
+  await downloadAndExtract(botUrl, botPath);
+
+  // 4. Check index.js presence in bot folder
+  const indexFile = path.join(botPath, 'index.js');
+  if (!fs.existsSync(indexFile)) {
+    console.error('❌ index.js not found in bot folder:', indexFile);
+    process.exit(1);
+  }
+
+  // 5. Start bot
+  console.log(`🚀 Starting bot from ${indexFile}...`);
+  const botProcess = spawn('node', [indexFile], { stdio: 'inherit', cwd: botPath });
+
+  botProcess.on('exit', (code) => {
+    console.log(`🔁 Bot exited with code: ${code}`);
+  });
+}
+
+main();
