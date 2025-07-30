@@ -24,6 +24,7 @@
     "@whiskeysockets/baileys": "npm:@whiskeysockets/baileys@^6.7.18",
     "@xct007/frieren-scraper":"^0.0.2",
     "api-dylux":"latest",
+    "adm-zip":"0.5.16",
     "async-g-i-s":"^1.4.0",
     "axios":"^1.10.0",
     "btch-downloader":"^2.0.9",
