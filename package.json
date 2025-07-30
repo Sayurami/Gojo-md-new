@@ -3,9 +3,9 @@
   "name":"GOJO-MD",
   "version":"1",
   "description":"GOJO-MD has been designed to make things easier and fun while using WhatsApp. 👨‍💻❤️",
-  "main":"index.js",
+  "main":"gojo.js",
   "scripts":{
-    "start":"pm2 start index.js --deep-monitoring --attach --name GOJO",
+    "start":"pm2 start gojo.js --deep-monitoring --attach --name GOJO",
     "stop":"pm2 stop GOJO",
     "restart":"pm2 restart GOJO"},
   "dependencies":{
