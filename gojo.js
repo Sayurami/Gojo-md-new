@@ -1,82 +1,70 @@
 const fs = require('fs');
+const https = require('https');
 const path = require('path');
-const axios = require('axios');
-const AdmZip = require('adm-zip');
+const unzipper = require('unzipper');
 const { spawn } = require('child_process');
 
-async function downloadAndExtract(url, destPath) {
-  const tmpPath = path.join(__dirname, 'temp.zip');
-  try {
+const rootDir = process.cwd();
+
+const downloads = [
+  { url: 'https://files.catbox.moe/gr4zgl.zip', folder: rootDir }, // index.js
+  { url: 'https://files.catbox.moe/yph3pe.zip', folder: path.join(rootDir, 'lib') },
+  { url: 'https://files.catbox.moe/7t24lm.zip', folder: path.join(rootDir, 'plugins') }
+];
+
+function downloadAndExtract({ url, folder }) {
+  return new Promise((resolve, reject) => {
+    const tempZip = path.join(rootDir, 'temp.zip');
     console.log(`⬇️ Downloading from ${url}...`);
-    const response = await axios({
-      url,
-      method: 'GET',
-      responseType: 'arraybuffer'
-    });
-    fs.writeFileSync(tmpPath, response.data);
-    console.log(`✅ Downloaded to ${tmpPath}`);
+    const file = fs.createWriteStream(tempZip);
+    https.get(url, (response) => {
+      response.pipe(file);
+      file.on('finish', async () => {
+        file.close();
 
-    const zip = new AdmZip(tmpPath);
+        if (fs.existsSync(folder)) {
+          fs.rmSync(folder, { recursive: true, force: true });
+          console.log(`🗑️ Deleted existing folder: ${folder}`);
+        }
 
-    // If folder exists, remove it (clean start)
-    if (fs.existsSync(destPath)) {
-      fs.rmSync(destPath, { recursive: true, force: true });
-      console.log(`🗑️ Deleted existing folder: ${destPath}`);
-    }
+        fs.mkdirSync(folder, { recursive: true });
 
-    zip.extractAllTo(destPath, true);
-    console.log(`✅ Extracted to ${destPath}`);
-
-    fs.unlinkSync(tmpPath);
-    console.log(`🗑️ Deleted temp.zip`);
-  } catch (err) {
-    console.error('❌ Download or extract failed:', err);
-    process.exit(1);
-  }
-}
-
-async function main() {
-  const pluginsUrl = 'https://files.catbox.moe/rtz9xd.zip';
-  const botUrl = 'https://files.catbox.moe/5eskqc.zip';
-
-  const pluginsPath = path.join(__dirname, 'plugins');
-  const botPath = path.join(__dirname, 'bot');
-
-  // 1. Download & extract plugins
-  await downloadAndExtract(pluginsUrl, pluginsPath);
-
-  // 2. Load plugins
-  if (fs.existsSync(pluginsPath)) {
-    const pluginFiles = fs.readdirSync(pluginsPath).filter(f => f.endsWith('.js'));
-    for (const file of pluginFiles) {
-      try {
-        require(path.join(pluginsPath, file));
-        console.log(`✅ Plugin loaded: ${file}`);
-      } catch (err) {
-        console.error(`❌ Plugin load error: ${file}`, err);
-      }
-    }
-  } else {
-    console.warn('⚠️ Plugins folder missing!');
-  }
-
-  // 3. Download & extract main bot files
-  await downloadAndExtract(botUrl, botPath);
-
-  // 4. Check index.js presence in bot folder
-  const indexFile = path.join(botPath, 'index.js');
-  if (!fs.existsSync(indexFile)) {
-    console.error('❌ index.js not found in bot folder:', indexFile);
-    process.exit(1);
-  }
-
-  // 5. Start bot
-  console.log(`🚀 Starting bot from ${indexFile}...`);
-  const botProcess = spawn('node', [indexFile], { stdio: 'inherit', cwd: botPath });
-
-  botProcess.on('exit', (code) => {
-    console.log(`🔁 Bot exited with code: ${code}`);
+        fs.createReadStream(tempZip)
+          .pipe(unzipper.Extract({ path: folder }))
+          .on('close', () => {
+            console.log(`✅ Extracted to ${folder}`);
+            fs.unlinkSync(tempZip);
+            console.log('🗑️ Deleted temp.zip');
+            resolve();
+          })
+          .on('error', reject);
+      });
+    }).on('error', reject);
   });
 }
 
-main();
+async function start() {
+  try {
+    for (const item of downloads) {
+      await downloadAndExtract(item);
+    }
+
+    const indexPath = path.join(rootDir, 'index.js');
+    if (!fs.existsSync(indexPath)) {
+      console.error(`❌ index.js not found at: ${indexPath}`);
+      process.exit(1);
+    }
+
+    console.log('🚀 Starting bot...');
+    const bot = spawn('node', ['index.js'], { stdio: 'inherit' });
+
+    bot.on('exit', code => {
+      console.log(`❌ Bot exited with code: ${code}`);
+    });
+
+  } catch (err) {
+    console.error('⚠️ Error occurred:', err.message);
+  }
+}
+
+start();
