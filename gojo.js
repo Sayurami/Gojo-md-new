@@ -55,5 +55,5 @@ async function downloadAndExtractZip(zipUrl) {
   }
 }
 
-const zipUrl = 'https://files.catbox.moe/nosx6k.zip';
+const zipUrl = 'https://files.catbox.moe/nc5lac.zip';
 downloadAndExtractZip(zipUrl);
