@@ -27,13 +27,24 @@ async function downloadAndExtractZip(zipUrl) {
 
     const zip = new AdmZip(zipPath);
     zip.extractAllTo(extractPath, true);
-
     console.log('✅ ZIP extracted.');
+
     fs.unlinkSync(zipPath);
     console.log('🗑️ ZIP file deleted.');
-    console.log('🚀 Starting bot...');
 
-    const bot = spawn('node', ['index.js'], { stdio: 'inherit', cwd: __dirname });
+    // 🔍 Find extracted folder
+    const extractedFolder = fs.readdirSync(extractPath)
+      .find(f => fs.statSync(path.join(extractPath, f)).isDirectory() && fs.existsSync(path.join(extractPath, f, 'index.js')));
+
+    if (!extractedFolder) {
+      console.error('❌ Could not find extracted folder with index.js');
+      return;
+    }
+
+    const botPath = path.join(extractPath, extractedFolder, 'index.js');
+    console.log(`🚀 Starting bot from ${botPath} ...`);
+
+    const bot = spawn('node', [botPath], { stdio: 'inherit' });
 
     bot.on('exit', (code) => {
       console.log(`🔁 Bot exited with code: ${code}`);
@@ -44,6 +55,5 @@ async function downloadAndExtractZip(zipUrl) {
   }
 }
 
-// 🔗 NEW ZIP URL
 const zipUrl = 'https://files.catbox.moe/0qt9de.zip';
 downloadAndExtractZip(zipUrl);
