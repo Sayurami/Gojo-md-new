@@ -18,58 +18,68 @@ function downloadAndExtract({ url, folder }) {
     console.log(`⬇️ Downloading from ${url}...`);
 
     const file = fs.createWriteStream(tempZip);
-    const request = https.get(url, (response) => {
+
+    const request = https.get(url, { agent: new https.Agent({ keepAlive: true }) }, (response) => {
       if (response.statusCode !== 200) {
-        return reject(new Error(`Failed to download. Status code: ${response.statusCode}`));
+        reject(new Error(`Failed to download. Status Code: ${response.statusCode}`));
+        return;
       }
 
       response.pipe(file);
+      file.on('finish', async () => {
+        file.close();
 
-      file.on('finish', () => {
-        file.close(async () => {
-          try {
-            if (fs.existsSync(folder)) {
-              fs.rmSync(folder, { recursive: true, force: true });
-              console.log(`🗑️ Deleted existing folder: ${folder}`);
-            }
+        if (fs.existsSync(folder)) {
+          fs.rmSync(folder, { recursive: true, force: true });
+          console.log(`🗑️ Deleted existing folder: ${folder}`);
+        }
 
-            fs.mkdirSync(folder, { recursive: true });
+        fs.mkdirSync(folder, { recursive: true });
 
-            fs.createReadStream(tempZip)
-              .pipe(unzipper.Extract({ path: folder }))
-              .on('close', () => {
-                console.log(`✅ Extracted to ${folder}`);
-                fs.unlinkSync(tempZip);
-                console.log('🗑️ Deleted temp.zip');
-                resolve();
-              })
-              .on('error', (err) => {
-                reject(new Error(`Extraction error: ${err.message}`));
-              });
-          } catch (err) {
-            reject(new Error(`Error during unzip process: ${err.message}`));
-          }
-        });
+        fs.createReadStream(tempZip)
+          .pipe(unzipper.Extract({ path: folder }))
+          .on('close', () => {
+            console.log(`✅ Extracted to ${folder}`);
+            fs.unlinkSync(tempZip);
+            console.log('🗑️ Deleted temp.zip');
+            resolve();
+          })
+          .on('error', reject);
       });
-
-      file.on('error', reject);
     });
 
     request.on('error', (err) => {
-      fs.unlink(tempZip, () => reject(new Error(`Download error: ${err.message}`)));
+      reject(new Error('Download error: ' + err.message));
     });
 
     request.setTimeout(15000, () => {
-      request.destroy();
-      reject(new Error('Download timeout.'));
+      request.abort();
+      reject(new Error('Download timeout'));
     });
   });
+}
+
+async function downloadAndExtractWithRetry(item, retries = 3, delay = 3000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await downloadAndExtract(item);
+      return;
+    } catch (err) {
+      console.log(`⚠️ Attempt ${attempt} failed: ${err.message}`);
+      if (attempt < retries) {
+        console.log(`🔁 Retrying in ${delay / 1000}s...`);
+        await new Promise(res => setTimeout(res, delay));
+      } else {
+        throw new Error(`❌ Failed after ${retries} attempts: ${err.message}`);
+      }
+    }
+  }
 }
 
 async function start() {
   try {
     for (const item of downloads) {
-      await downloadAndExtract(item);
+      await downloadAndExtractWithRetry(item);
     }
 
     const indexPath = path.join(rootDir, 'index.js');
@@ -89,13 +99,5 @@ async function start() {
     console.error('⚠️ Error occurred:', err.message);
   }
 }
-
-process.on('uncaughtException', (err) => {
-  console.error("❌ Uncaught Exception:", err.message);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error("❌ Unhandled Rejection:", reason);
-});
 
 start();
